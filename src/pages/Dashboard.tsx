@@ -1,37 +1,53 @@
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
-import { ArrowDownIcon, ArrowUpIcon, DollarSign } from 'lucide-react'
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { ArrowDownIcon, ArrowUpIcon, DollarSign } from 'lucide-react';
+import { auth, db } from "../lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { useAuthState } from "react-firebase-hooks/auth";
 
 export function Dashboard() {
+  const [user] = useAuthState(auth);
+  const [balance, setBalance] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+
+      const unsubscribe = onSnapshot(userRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const userData = docSnapshot.data();
+          setBalance(userData?.balance || 0);
+          setLoading(false);
+        }
+      }, (error) => {
+        console.error("Error al cargar el balance:", error);
+        setError("Error al cargar los datos. Por favor, recarga la página.");
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  if (loading) return <p>Cargando...</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
-    <div className=" mx-auto space-y-6">
-      {/* Welcome Section */}
+    <div className="max-w-xl mx-auto space-y-6">
       <div className="bg-primary text-primary-foreground rounded-b-3xl -mx-4 -mt-20 p-6 pt-24 mb-6 shadow-xl">
-        <h1 className="text-2xl font-medium">Saldo actual</h1>
-        <div className="mt-4">
-          <p className="text-4xl font-bold">$70,501.00</p>
-          <p className="mt-1 text-primary-foreground/80">Balance Total</p>
-        </div>
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <button className="flex flex-col items-center justify-center rounded-lg bg-white/10 p-4 hover:bg-white/20">
-            <ArrowUpIcon className="h-6 w-6" />
-            <span className="mt-2 text-sm">Transferir</span>
-          </button>
-          <button className="flex flex-col items-center justify-center rounded-lg bg-white/10 p-4 hover:bg-white/20">
-            <ArrowDownIcon className="h-6 w-6" />
-            <span className="mt-2 text-sm">Recibir</span>
-          </button>
-          <button className="flex flex-col items-center justify-center rounded-lg bg-white/10 p-4 hover:bg-white/20">
-            <DollarSign className="h-6 w-6" />
-            <span className="mt-2 text-sm">Pagar</span>
-          </button>
-          <button className="flex flex-col items-center justify-center rounded-lg bg-white/10 p-4 hover:bg-white/20">
-            <DollarSign className="h-6 w-6" />
-            <span className="mt-2 text-sm">Historial</span>
-          </button>
-        </div>
+        <h1 className="text-xl font-medium mb-4">Ventaja rentable</h1>
+        <Card className="bg-white/20 border-none shadow-2xl">
+          <CardContent className="p-3">
+            <div className="space-y-1">
+              <p className="text-lg text-primary-foreground/100">Saldo Actual</p>
+              <p className="text-4xl font-bold text-white">${balance}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -65,6 +81,5 @@ export function Dashboard() {
         </Card>
       </div>
     </div>
-  )
+  );
 }
-

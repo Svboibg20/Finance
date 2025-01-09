@@ -1,20 +1,173 @@
-import { Card, CardContent } from "../components/ui/card"
-import { Plus,  Home as HomeIcon, Wallet, PieChart, Settings } from 'lucide-react'
+'use client'
 
+import { useState, useEffect } from 'react'
+import { Card, CardContent } from "../components/ui/card"
+import { Plus, Minus, HomeIcon, Wallet, PieChart, Settings } from 'lucide-react'
+import { TransactionItem } from "../components/ui/transaction-item"
+import { RechargeModal } from "../components/ui/recharge-modal"
+import { WithdrawModal } from "../components/ui/withdraw-modal"
+import { toast } from 'sonner'
+import { auth, db } from '../lib/firebase'
+import { doc, updateDoc, addDoc, collection, serverTimestamp, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
+import { useAuthState } from 'react-firebase-hooks/auth'
+import { initializeUserData } from '../lib/firebase-service'
 
 export function Home() {
-  
+  const [user, loading] = useAuthState(auth);
+  const [balance, setBalance] = useState(0)
+  const [isRechargeOpen, setIsRechargeOpen] = useState(false)
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+  const [recentTransactions, setRecentTransactions] = useState<{ id: string; name: string; amount: number; type: "transfer" | "shopping"; date: string; }[]>([])
+  const [isInitializing, setIsInitializing] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const setupUserData = async () => {
+      if (user) {
+        try {
+          // Initialize user data if needed
+          await initializeUserData(user.uid);
+
+          // Set up real-time listeners
+          const userRef = doc(db, 'users', user.uid);
+          const unsubscribeUser = onSnapshot(userRef, (doc) => {
+            if (doc.exists()) {
+              setBalance(doc.data().balance || 0);
+            }
+          }, (error) => {
+            console.error("Error fetching user data:", error);
+            setError("Error al cargar los datos del usuario. Por favor, recarga la página.");
+          });
+
+          const transactionsRef = collection(db, 'users', user.uid, 'transactions');
+          const transactionsQuery = query(
+            transactionsRef,
+            orderBy('date', 'desc'),
+            limit(10)
+          );
+
+          const unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
+            const transactions = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              date: doc.data().date?.toDate?.()?.toLocaleDateString() || new Date().toLocaleDateString()
+            })) as { id: string; name: string; amount: number; type: "transfer" | "shopping"; date: string; }[];
+            setRecentTransactions(transactions);
+          }, (error) => {
+            console.error("Error fetching transactions:", error);
+            setError("Error al cargar las transacciones. Por favor, recarga la página.");
+          });
+
+          setIsInitializing(false);
+          return () => {
+            unsubscribeUser();
+            unsubscribeTransactions();
+          };
+        } catch (error) {
+          console.error('Error setting up user data:', error);
+          setError('Error al cargar los datos. Por favor, recarga la página.');
+          setIsInitializing(false);
+        }
+      }
+    };
+
+    if (user && !loading) {
+      setupUserData();
+    }
+  }, [user, loading]);
+
+  const handleRecharge = async (amount: number) => {
+    if (!user) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const newBalance = balance + amount;
+
+      // Update user balance
+      await updateDoc(userRef, { balance: newBalance });
+
+      // Add transaction
+      const transactionRef = collection(db, 'users', user.uid, 'transactions');
+      await addDoc(transactionRef, {
+        name: "Recarga",
+        amount: amount,
+        type: "transfer",
+        date: serverTimestamp()
+      });
+
+      toast.success(`Recarga exitosa de $${amount.toFixed(2)}`);
+    } catch (error) {
+      console.error("Error al recargar:", error);
+      toast.error("Error al procesar la recarga. Por favor, intente de nuevo.");
+    }
+  }
+
+  const handleWithdraw = async (amount: number) => {
+    if (!user) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const newBalance = balance - amount;
+
+      if (newBalance < 0) {
+        toast.error("Saldo insuficiente para realizar el retiro.");
+        return;
+      }
+
+      // Update user balance
+      await updateDoc(userRef, { balance: newBalance });
+
+      // Add transaction
+      const transactionRef = collection(db, 'users', user.uid, 'transactions');
+      await addDoc(transactionRef, {
+        name: "Retiro",
+        amount: -amount,
+        type: "transfer",
+        date: serverTimestamp()
+      });
+
+      toast.success(`Retiro exitoso de $${amount.toFixed(2)}`);
+    } catch (error) {
+      console.error("Error al retirar:", error);
+      toast.error("Error al procesar el retiro. Por favor, intente de nuevo.");
+    }
+  }
+
+  if (loading || isInitializing) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Cargando...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Por favor, inicia sesión para ver tu cuenta.</p>
+      </div>
+    );
+  }
+
 
   return (
-    <div className="max-w-md mx-auto space-y-6">
+    <div className="max-w-xl mx-auto space-y-6">
       {/* Header Section */}
       <div className="bg-primary text-primary-foreground rounded-b-3xl -mx-4 -mt-20 p-6 pt-24 mb-6 shadow-xl">
-        <h1 className="text-xl font-medium mb-4">Bienvenido de vuelta</h1>
+        <h1 className="text-xl font-medium mb-4">Bienvenido de vuelta, {user.displayName}</h1>
         <Card className="bg-white/20 border-none shadow-2xl">
-          <CardContent className="p-6">
+          <CardContent className="p-3">
             <div className="space-y-1">
-              <p className="text-sm text-primary-foreground/100">TU BALANCE</p>
-              <p className="text-4xl font-bold">$70,501.00</p>
+              <p className="text-lg text-primary-foreground/100">Saldo Actual</p>
+              <p className="text-4xl font-bold text-white">${balance}</p>
             </div>
           </CardContent>
         </Card>
@@ -22,12 +175,52 @@ export function Home() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-4 gap-4 px-4">
-        <button className="flex flex-col items-center gap-2">
+        <button
+          className="flex flex-col items-center gap-2"
+          onClick={() => setIsRechargeOpen(true)}
+        >
           <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
             <Plus className="h-6 w-6" />
           </div>
           <span className="text-xs">Recargar</span>
         </button>
+        <button
+          className="flex flex-col items-center gap-2"
+          onClick={() => setIsWithdrawOpen(true)}
+        >
+          <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+            <Minus className="h-6 w-6" />
+          </div>
+          <span className="text-xs">Retirar</span>
+        </button>
+      </div>
+
+      {/* Modals */}
+      <RechargeModal
+        isOpen={isRechargeOpen}
+        onClose={() => setIsRechargeOpen(false)}
+        onRecharge={handleRecharge}
+      />
+      <WithdrawModal
+        isOpen={isWithdrawOpen}
+        onClose={() => setIsWithdrawOpen(false)}
+        onWithdraw={handleWithdraw}
+        maxAmount={balance}
+      />
+
+      {/* Recent Transactions */}
+      <div
+        className="bg-transparent text-primary-foreground rounded-t-3xl -mx-4  p-6"
+        style={{ boxShadow: "0 -10px 10px 0px rgba(0, 0, 0, 0.1)" }}
+      >
+        <CardContent className="p-6">
+          <h2 className="text-lg font-bold mb-4 text-black">Movimientos Recientes</h2>
+          <div className="divide-y text-black">
+            {recentTransactions.slice(0, 5).map((transaction) => (
+              <TransactionItem key={transaction.id} {...transaction} />
+            ))}
+          </div>
+        </CardContent>
       </div>
 
 

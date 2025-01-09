@@ -1,57 +1,67 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { Card } from "../components/ui/card"
-import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react'
+import { useState, useEffect } from "react";
+import { Card } from "../components/ui/card";
+import { TransactionItem } from "../components/ui/transaction-item";
+import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { useAuthState } from "react-firebase-hooks/auth";
 
 export function Transactions() {
-  const transactions = [
-    { id: 1, date: '2023-05-01', description: 'Salario', amount: 5000, type: 'ingreso' },
-    { id: 2, date: '2023-05-02', description: 'Supermercado', amount: -200, type: 'gasto' },
-    { id: 3, date: '2023-05-03', description: 'Gasolina', amount: -50, type: 'gasto' },
-    { id: 4, date: '2023-05-04', description: 'Venta en línea', amount: 100, type: 'ingreso' },
-  ]
+  const [user] = useAuthState(auth);
+  interface Transaction {
+    id: string;
+    date: string;
+    [key: string]: any;
+  }
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const transactionsRef = collection(db, "users", user.uid, "transactions");
+    const transactionsQuery = query(transactionsRef, orderBy("date", "desc"), limit(10));
+
+    const unsubscribe = onSnapshot(
+      transactionsQuery,
+      (snapshot) => {
+        const fetchedTransactions = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date?.toDate?.()?.toLocaleDateString() || new Date().toLocaleDateString(),
+        }));
+        setTransactions(fetchedTransactions);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching transactions:", error);
+        setError("Error al cargar las transacciones.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  if (loading) return <p>Cargando transacciones...</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold">Transacciones</h1>
+      <div className="bg-primary text-primary-foreground rounded-b-3xl -mx-4 -mt-20 p-6 pt-24 shadow-xl">
+        <h1 className="text-xl font-medium mb-4">Transacciones</h1>
       </div>
       <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Descripción</TableHead>
-              <TableHead>Monto</TableHead>
-              <TableHead className="text-right">Tipo</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <div className="p-6">
+          <h2 className="text-lg font-bold mb-4">Movimientos Recientes</h2>
+          <ul className="divide-y">
             {transactions.map((transaction) => (
-              <TableRow key={transaction.id}>
-                <TableCell>{transaction.date}</TableCell>
-                <TableCell>{transaction.description}</TableCell>
-                <TableCell className={transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}>
-                  ${Math.abs(transaction.amount).toFixed(2)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {transaction.type === 'ingreso' ? (
-                    <span className="inline-flex items-center gap-1 text-green-600">
-                      <ArrowUpIcon className="h-4 w-4" />
-                      Ingreso
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-red-600">
-                      <ArrowDownIcon className="h-4 w-4" />
-                      Gasto
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
+              <TransactionItem name={""} amount={0} type={"transfer"} key={transaction.id} {...transaction} />
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+        </div>
       </Card>
     </div>
-  )
+  );
 }
-
