@@ -6,20 +6,26 @@ import { Plus, Minus, HomeIcon, Wallet, PieChart, Settings } from 'lucide-react'
 import { TransactionItem } from "../components/ui/transaction-item"
 import { RechargeModal } from "../components/ui/recharge-modal"
 import { WithdrawModal } from "../components/ui/withdraw-modal"
+import { AddExpenseDialog } from "../components/AddExpenseDialog"
 import { toast } from 'sonner'
 import { auth, db } from '../lib/firebase'
 import { doc, updateDoc, addDoc, collection, serverTimestamp, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { initializeUserData } from '../lib/firebase-service'
+import { getBudgetCategories } from '../lib/budget-service'
+import { addExpense } from '../lib/expense-service'
+
 
 export function Home() {
   const [user, loading] = useAuthState(auth);
   const [balance, setBalance] = useState(0)
   const [isRechargeOpen, setIsRechargeOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+  const [isExpenseOpen, setIsExpenseOpen] = useState(false)
   const [recentTransactions, setRecentTransactions] = useState<{ id: string; name: string; amount: number; type: "transfer" | "shopping"; date: string; }[]>([])
   const [isInitializing, setIsInitializing] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [categories, setCategories] = useState<any[]>([])
 
   useEffect(() => {
     const setupUserData = async () => {
@@ -58,10 +64,15 @@ export function Home() {
             setError("Error al cargar las transacciones. Por favor, recarga la página.");
           });
 
+          const unsubscribeCategories = getBudgetCategories(user.uid, (fetchedCategories) => {
+            setCategories(fetchedCategories);
+          });
+
           setIsInitializing(false);
           return () => {
             unsubscribeUser();
             unsubscribeTransactions();
+            unsubscribeCategories();
           };
         } catch (error) {
           console.error('Error setting up user data:', error);
@@ -126,12 +137,28 @@ export function Home() {
         date: serverTimestamp()
       });
 
-      toast.success(`Retiro exitoso de $${amount.toFixed(2)}`);
+      toast.success(`Retiro exitoso de $${amount}`);
     } catch (error) {
       console.error("Error al retirar:", error);
       toast.error("Error al procesar el retiro. Por favor, intente de nuevo.");
     }
   }
+
+  const handleAddExpense = async (categoryId: string, amount: number) => {
+    if (!user) return;
+
+    try {
+      await addExpense(user.uid, categoryId, amount);
+      toast.success(`Gasto de $${amount} registrado con éxito`);
+    } catch (error) {
+      console.error("Error al registrar el gasto:", error);
+      if (error === "Insufficient balance") {
+        toast.error("Saldo insuficiente para registrar el gasto.");
+      } else {
+        toast.error("Error al registrar el gasto. Por favor, intente de nuevo.");
+      }
+    }
+  };
 
   if (loading || isInitializing) {
     return (
@@ -157,7 +184,6 @@ export function Home() {
     );
   }
 
-
   return (
     <div className="max-w-xl mx-auto space-y-6">
       {/* Header Section */}
@@ -174,7 +200,7 @@ export function Home() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-4 gap-4 px-4">
+      <div className="grid grid-cols-3 gap-4 px-4">
         <button
           className="flex flex-col items-center gap-2"
           onClick={() => setIsRechargeOpen(true)}
@@ -193,6 +219,15 @@ export function Home() {
           </div>
           <span className="text-xs">Retirar</span>
         </button>
+        <button
+          className="flex flex-col items-center gap-2"
+          onClick={() => setIsExpenseOpen(true)}
+        >
+          <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+            <Wallet className="h-6 w-6" />
+          </div>
+          <span className="text-xs">Registrar Gasto</span>
+        </button>
       </div>
 
       {/* Modals */}
@@ -206,6 +241,14 @@ export function Home() {
         onClose={() => setIsWithdrawOpen(false)}
         onWithdraw={handleWithdraw}
         maxAmount={balance}
+      />
+      <AddExpenseDialog
+        isOpen={isExpenseOpen}
+        onClose={() => setIsExpenseOpen(false)}
+        onAdd={({ categoryId, amount }) => {
+          handleAddExpense(categoryId, amount)
+        }}
+        categories={categories}
       />
 
       {/* Recent Transactions */}
@@ -222,8 +265,6 @@ export function Home() {
           </div>
         </CardContent>
       </div>
-
-
 
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t py-2 px-6">

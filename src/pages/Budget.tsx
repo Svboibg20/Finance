@@ -3,14 +3,15 @@
 import { useState, useEffect } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from '../lib/firebase'
-import { getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory, addExpense } from '../lib/budget-service'
+import { getBudgetCategories, addBudgetCategory, updateBudgetCategory, deleteBudgetCategory } from '../lib/budget-service'
+import { addExpense } from '../lib/expense-service'
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Progress } from "../components/ui/progress"
 import { Button } from "../components/ui/button"
 import { EditBudgetModal } from "../components/EditBudgetModal"
 import { AddBudgetDialog } from "../components/AddBudgetDialog"
 import { AddExpenseDialog } from "../components/AddExpenseDialog"
-import { Plus, PlusCircle } from 'lucide-react'
+import { Plus, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface BudgetCategory {
@@ -27,6 +28,8 @@ export function Budget() {
   const [isExpenseOpen, setIsExpenseOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<BudgetCategory | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [totalBudget, setTotalBudget] = useState(0)
+  const [totalSpent, setTotalSpent] = useState(0)
 
   useEffect(() => {
     let unsubscribe: () => void
@@ -36,6 +39,11 @@ export function Budget() {
         setIsLoading(true)
         unsubscribe = getBudgetCategories(user.uid, (fetchedCategories) => {
           setCategories(fetchedCategories)
+          // Calculate totals
+          const budget = fetchedCategories.reduce((acc, cat) => acc + cat.budget, 0)
+          const spent = fetchedCategories.reduce((acc, cat) => acc + cat.spent, 0)
+          setTotalBudget(budget)
+          setTotalSpent(spent)
           setIsLoading(false)
         })
       }
@@ -65,14 +73,8 @@ export function Budget() {
   }
 
   const handleAddExpense = async ({ categoryId, amount }: { categoryId: string; amount: number }) => {
-    if (!user) {
-      console.error('No user logged in');
-      toast.error('Debes iniciar sesión para registrar un gasto');
-      return;
-    }
-  
-    console.log('User UID:', user.uid); // Añade este log
-  
+    if (!user) return
+
     try {
       await addExpense(user.uid, categoryId, amount)
       toast.success('Gasto registrado con éxito')
@@ -117,19 +119,39 @@ export function Budget() {
 
   return (
     <div className="relative min-h-screen pb-20">
+      {/* Header Section with blue background */}
+      <div className="bg-primary text-primary-foreground rounded-b-3xl -mx-4 -mt-20 p-6 pt-24 mb-6 shadow-xl">
+        <h1 className="text-xl font-medium mb-4">Presupuesto</h1>
+        <Card className="bg-white/20 border-none shadow-2xl">
+          <CardContent className="p-3">
+            <div className="space-y-1">
+              <p className="text-lg text-primary-foreground/100">Total Presupuestado</p>
+              <p className="text-4xl font-bold text-white">${totalBudget}</p>
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-sm text-primary-foreground/80">Gastado: ${totalSpent}</span>
+                <span className="text-sm text-primary-foreground/80">
+                  {totalBudget > 0 ? `${((totalSpent / totalBudget) * 100)}%` : '0%'}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="space-y-6 p-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Presupuesto</h1>
-          <Button 
-            variant="outline"
-            size="sm"
+          <h2 className="text-xl font-semibold">Categorías</h2>
+          <button
+            className="flex flex-col items-center gap-2"
             onClick={() => setIsExpenseOpen(true)}
           >
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Registrar Gasto
-          </Button>
+            <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <span className="text-xs">Registrar Gasto</span>
+          </button>
         </div>
-        
+
         {categories.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">No hay categorías de presupuesto.</p>
@@ -149,7 +171,7 @@ export function Budget() {
                   <CardContent className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium">
-                        ${category.spent.toFixed(2)} / ${category.budget.toFixed(2)}
+                        ${category.spent.toFixed(2)} / ${category.budget}
                       </span>
                       <span className={isOverBudget ? "text-red-500" : "text-muted-foreground"}>
                         {percentage.toFixed(1)}%

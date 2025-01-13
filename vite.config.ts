@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react-swc'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/Finance/', // Cambia 'Finance' por el nombre de tu repositorio
+  base: '/Finance', // Cambia 'Finance' por el nombre de tu repositorio
 })

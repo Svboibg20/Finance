@@ -1,66 +1,43 @@
 import { db } from './firebase';
-import {
-    collection,
-    doc,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    onSnapshot,
-    query,
-    addDoc,
-    serverTimestamp,
-    increment
-} from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
+
 interface BudgetCategory {
-    id: string;
-    name: string;
-    budget: number;
-    spent: number;
+  id: string;
+  name: string;
+  budget: number;
+  spent: number;
 }
 
 export const getBudgetCategories = (userId: string, callback: (categories: BudgetCategory[]) => void) => {
-    const q = query(collection(db, 'users', userId, 'budgetCategories'));
-    return onSnapshot(q, (snapshot) => {
-        const categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetCategory));
-        callback(categories);
-    });
+  const q = query(collection(db, 'users', userId, 'budgetCategories'));
+  return onSnapshot(q, (snapshot) => {
+    const categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetCategory));
+    callback(categories);
+  });
 };
 
 export const addBudgetCategory = async (userId: string, category: { name: string, budget: number }) => {
-    const categoriesRef = collection(db, 'users', userId, 'budgetCategories');
-    await setDoc(doc(categoriesRef), { ...category, spent: 0 });
+  const categoriesRef = collection(db, 'users', userId, 'budgetCategories');
+  await setDoc(doc(categoriesRef), { ...category, spent: 0 });
 };
 
 export const updateBudgetCategory = async (userId: string, categoryId: string, updates: Partial<BudgetCategory>) => {
-    const categoryRef = doc(db, 'users', userId, 'budgetCategories', categoryId);
-    await updateDoc(categoryRef, updates);
+  const categoryRef = doc(db, 'users', userId, 'budgetCategories', categoryId);
+  await updateDoc(categoryRef, updates);
 };
 
 export const deleteBudgetCategory = async (userId: string, categoryId: string) => {
-    const categoryRef = doc(db, 'users', userId, 'budgetCategories', categoryId);
-    await deleteDoc(categoryRef);
+  const categoryRef = doc(db, 'users', userId, 'budgetCategories', categoryId);
+  await deleteDoc(categoryRef);
 };
 
-export const addExpense = async (userId: string, categoryId: string, amount: number) => {
-    console.log('Adding expense for user:', userId, 'category:', categoryId, 'amount:', amount);
-    const categoryRef = doc(db, 'users', userId, 'budgetCategories', categoryId);
-    const expensesRef = collection(categoryRef, 'expenses');
 
-    try {
-        // Add the expense record
-        const expenseDoc = await addDoc(expensesRef, {
-            amount,
-            date: serverTimestamp()
-        });
-        console.log('Expense added with ID:', expenseDoc.id);
-
-        // Update the category's spent amount using increment
-        await updateDoc(categoryRef, {
-            spent: increment(amount)
-        });
-        console.log('Category spent amount updated');
-    } catch (error) {
-        console.error('Error in addExpense:', error);
-        throw error; // Re-throw the error to be caught in the component
+export const getUserBalance = (userId: string, callback: (balance: number) => void) => {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(userRef, (doc) => {
+    if (doc.exists()) {
+      callback(doc.data().balance || 0);
     }
+  });
 };
+
